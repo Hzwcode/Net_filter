@@ -21,6 +21,8 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/icmp.h>
+#include <linux/rtc.h>
+#include <linux/time.h>
 #include <net/sock.h>
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -34,24 +36,26 @@ typedef short Bool;
 
 #define ANY_ADDR 0
 #define ANY_PORT 0xffff
-#define ANY_PROROCOL 0xffff
-#define ANY_TIME 0
+#define ANY_PROTOCOL 0xffff
+#define ANY_TIME(tm) (tm.begin_time.tv64 >= tm.end_time.tv64)
 
+#define MASK_IP(x, mask) (x & (0xffffffff << (32 - mask)))
 
+//规则
 typedef struct rule{
      struct{
-          uint32_t addr;
-          uint8_t mask;
-     }s_addr, d_addr;
-	uint16_t s_port, d_port;
-	__be16 protocal;
+          uint32_t addr;        //IP地址
+          uint8_t mask;         //掩码
+     }s_addr, d_addr;           //源IP地址，目的IP地址
+	uint16_t s_port, d_port;   //源端口，目的端口
+	__be16 protocol;           //协议类型
 	struct{
           ktime_t begin_time;
           ktime_t end_time;
-     }tm;
-	Bool action;
+     }tm;                       //时间段
+	Bool action;               //动作
 
-     struct rule *next;
+     struct rule *next;         //下一结点域
 }RULE;
 
 unsigned int hook_pre_routing(unsigned int hooknum,
