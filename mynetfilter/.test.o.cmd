@@ -1,1 +1,0 @@
-cmd_/home/shsf-hzw/netfilter/mynetfilter/test.o := ld -m elf_x86_64   -r -o /home/shsf-hzw/netfilter/mynetfilter/test.o /home/shsf-hzw/netfilter/mynetfilter/mynetfilter.o /home/shsf-hzw/netfilter/mynetfilter/hook.o 
