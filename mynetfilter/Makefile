@@ -3,7 +3,7 @@
 #KERN_DIR = /usr/src/kernels/2.6.32-220.el6.x86_64/
 #KERN_DIR = /usr/src/$(shell uname -r)
 KERN_DIR = /lib/modules/$(shell uname -r)/build
-test-objs := mynetfilter.o hook.o
+test-objs := mynetfilter.o hook.o chardev.o
 all:
 	make -C $(KERN_DIR) M=$(shell pwd) modules   
 

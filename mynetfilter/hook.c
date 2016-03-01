@@ -10,7 +10,7 @@ MODULE_LICENSE("GPL");
 
 RULE *rule_head;
 
-__be16 GetProtocol(struct sk_buff *skb){
+__u8 GetProtocol(struct sk_buff *skb){
 	struct sk_buff *sk;
 	struct iphdr *ip;
 	sk = skb_copy(skb, 1);
@@ -113,7 +113,7 @@ unsigned int hook_pre_routing(unsigned int hooknum,
 			int (*okfn)(struct sk_buff *))
 {
 	/*
-	__be16 protocol;
+	__u8 protocol;
 	printk("hook_pre_routing\n");
 	protocol = GetProtocol(skb);
 	
@@ -129,11 +129,12 @@ unsigned int hook_pre_routing(unsigned int hooknum,
 		printk("There is a 【ICMP】 package.\n");
 	}
 	*/
+	/*
 	struct rtc_time tm;
 
 	rtc_time_to_tm(skb->tstamp.tv64/1000000000 + (8 * 60 * 60), &tm);
 	printk("time@ (%04d-%02d-%02d %02d:%02d:%02d)\n",tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
+	*/
 	return NF_ACCEPT;
 }
 

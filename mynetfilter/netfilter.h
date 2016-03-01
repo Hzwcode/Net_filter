@@ -48,7 +48,7 @@ typedef struct rule{
           uint8_t mask;         //掩码
      }s_addr, d_addr;           //源IP地址，目的IP地址
 	uint16_t s_port, d_port;   //源端口，目的端口
-	__be16 protocol;           //协议类型
+	__u8 protocol;             //协议类型
 	struct{
           ktime_t begin_time;
           ktime_t end_time;

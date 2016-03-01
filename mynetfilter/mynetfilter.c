@@ -10,6 +10,7 @@
 #include <linux/netfilter_ipv4.h>
  
 #include "netfilter.h"
+#include "chardev.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("xsc");
@@ -27,8 +28,10 @@ int init_rule_list(void)
 {
     rule_head = (RULE *)kmalloc(sizeof(RULE), GFP_KERNEL);
     if(rule_head == NULL){
+        printk("ROLE_head kmalloc fail!!\n");
         return -1;
     }
+    printk("ROLE_head kmalloc success!!\n");
     rule_head->next = NULL;
     return 0;
 }
@@ -111,6 +114,8 @@ static int kexec_test_init(void)
     nf_forward_init();
     nf_local_out_init();
     nf_post_routing_init();
+
+    dev_init();
     return 0;
 }
 
@@ -123,6 +128,8 @@ static void kexec_test_exit(void)
     nf_unregister_hook(&nfho_local_out);
     nf_unregister_hook(&nfho_post_routing);
     destroy_rule_list();
+
+    dev_exit();
 }
 
 module_init(kexec_test_init);
