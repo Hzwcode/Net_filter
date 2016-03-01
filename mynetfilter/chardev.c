@@ -7,6 +7,8 @@ unsigned int minor = 0;
 dev_t dev_id;
 struct cdev my_cdev;
 struct mem_dev *mem_devp;  //设备结构体指针
+int mutex = 1;
+int counter = 0;
 
 struct file_operations rule_fops = {
 	.owner = THIS_MODULE,
@@ -20,18 +22,24 @@ struct file_operations rule_fops = {
 int my_open(struct inode *inode, struct file *file){
 	//printk("memdev open success!\n");
 	struct mem_dev *dev;
+	int num;
+	if(mutex != 1)
+		return EBUSY;
+	mutex = 0;
 	//获取次设备号
-	int num = MINOR(inode->i_rdev);
+	num = MINOR(inode->i_rdev);
 	if(num >= major)
 		return -ENODEV;
 	dev = &mem_devp[num];
 	//将设备描述结构指针赋值给文件私有数据指针
 	file->private_data = dev;
+	printk("<count>%d times to call the device.\n", ++counter);
 	return 0;
 }
 
 int my_release(struct inode *inode, struct file *file){
-	//printk("memdev release success!\n");
+	printk("memdev release success!\n");
+	mutex = 1;
 	return 0;
 }
 
