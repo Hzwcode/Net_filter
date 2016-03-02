@@ -37,9 +37,14 @@ typedef short Bool;
 #define ANY_ADDR 0
 #define ANY_PORT 0xffff
 #define ANY_PROTOCOL 0xffff
-#define ANY_TIME(tm) (tm.begin_time.tv64 >= tm.end_time.tv64)
 
 #define MASK_IP(x, mask) (x & (0xffffffff << (32 - mask)))
+
+typedef struct rule_time{
+     struct rtc_time begin_time;
+     struct rtc_time end_time;
+     Bool valid;
+}RULE_TIME; 
 
 //规则
 typedef struct rule{
@@ -48,11 +53,8 @@ typedef struct rule{
           uint8_t mask;         //掩码
      }s_addr, d_addr;           //源IP地址，目的IP地址
 	uint16_t s_port, d_port;   //源端口，目的端口
-	__u8 protocol;             //协议类型
-	struct{
-          ktime_t begin_time;
-          ktime_t end_time;
-     }tm;                       //时间段
+	__u8 protocol;             //协议类型                      
+     RULE_TIME tm;              //时间段
 	Bool action;               //动作
 
      struct rule *next;         //下一结点域
