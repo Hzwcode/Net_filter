@@ -78,6 +78,7 @@ void PrintRule(void){
         printk(" begin_time: %02d:%02d:%02d\n", tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec);
         printk(" end_time:   %02d:%02d:%02d\n\n", tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec);
         printk(" action:     %s\n\n", tmp->action ? "Permit" : "Reject");
+        printk("-----------------------------\n");
     }
 }
 
@@ -172,7 +173,11 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 	unsigned int p = *ppos;
 	unsigned int count = size;
 	struct mem_dev *dev = file->private_data;  //获得设备结构体指针
-	struct rule *tail;
+	struct list_head *pos, *q;
+	struct rule *tmp;
+	int nline, off, ret, i;
+	char *buffer;
+	char saddr[30], daddr[30];
 
 	if(p >= MEMDEV_SIZE)
 		return 0;
@@ -188,15 +193,50 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 	printk(KERN_INFO"written %d byte(s) from %d\n", count, p);
 	printk("<kernel>written content is \n[%s]\n", dev->data + p);
 
-	//tail = str2rule(dev->data + p);
-	tail = str2rule(buf);
-	if(tail == NULL){
-	 	printk("null point tail in mywrite\n");
+	list_for_each_safe(pos, q, &rule_head.list){
+		tmp = list_entry(pos, struct rule, list);
+		list_del(pos);
+		kfree(tmp);
 	}
-	
-	list_add_tail(&(tail->list), &(rule_head.list));
-	
+
+	buffer = dev->data + p;
+	nline = 0;
+	off = 0;
+	sscanf(buffer, "%d%n", &nline, &off);
+	//printk("%d   %d\n", nline, off);
+	buffer += off;
+	for(i = 0; i < nline; ++i){
+		if((tmp = (struct rule*)kzalloc(sizeof(struct rule), GFP_KERNEL)) == NULL){
+			printk("Error: kmalloc fail.\n");
+			break;
+		}
+		ret = sscanf(buffer, "%s /%hhu:%hu, %s /%hhu:%hu, %hhu, %hu, %d:%d:%d, %d:%d:%d, %hu%n", 
+						  saddr, &tmp->saddr.mask, &tmp->sport,
+						  daddr, &tmp->daddr.mask, &tmp->dport,
+						  &tmp->protocol,
+						  &tmp->tm.valid,
+						  &tmp->tm.ltime.tm_hour, &tmp->tm.ltime.tm_min, &tmp->tm.ltime.tm_sec,
+						  &tmp->tm.rtime.tm_hour, &tmp->tm.rtime.tm_min, &tmp->tm.rtime.tm_sec,
+						  &tmp->action, &off);
+		tmp -> saddr.addr = inet_addr(saddr);
+		tmp -> daddr.addr = inet_addr(daddr);
+		printk("%s/%hhu:%hu, %s/%hhu:%hu, %hhu, %hu, %02d:%02d:%02d, %02d:%02d:%02d, %hu\n", 
+				saddr, tmp->saddr.mask, tmp->sport,
+				daddr, tmp->daddr.mask, tmp->dport,
+				tmp->protocol,
+				tmp->tm.valid,
+				tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec,
+				tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec,
+				tmp->action);
+		if(ret < 15){
+			printk("sscanf fail , only complete %d scanfs\n", ret);
+		}
+		buffer += off;
+		list_add_tail(&(tmp->list), &(rule_head.list));
+	}
+
 	PrintRule();
+	
 	return count;
 }
 

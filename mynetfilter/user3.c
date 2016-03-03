@@ -23,20 +23,21 @@ int main(void){
  	}
  	fgets(buf, 80, fp1);
  	sscanf(buf, "%d", &num);
- 	printf("num:  %d\n", num);
+ 	printf("<u_row 1>: %d\n", num);
  	fprintf(fp0, "%s", buf);
  	for(i = 0; i < num; i++){
  		fgets(buf, 80, fp1);
- 		printf("<u_row %d>: %s\n", i+1, buf);
+ 		printf("<u_row %d>: %s", i+2, buf);
  		fprintf(fp0, "%s", buf);
  	}
  	fclose(fp1);
+ 	printf("\n");
  	fseek(fp0, 0, SEEK_SET);
- 	for(i = 0; i < num; i++){
+ 	for(i = 0; i <= num; i++){
  		fgets(buf, 80, fp0);
- 		printf("<row %d>: %s\n", i+1, buf);
+ 		printf("<k_row %d>: %s", i+1, buf);
  	}
- 	
+ 	printf("\n\n");
  	//fread(buf2, sizeof(buf2), 1, fp0);
  	//printf("BUF: %s\n",buf2);
  	fclose(fp0);
