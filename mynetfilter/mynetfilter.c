@@ -13,9 +13,9 @@
 #include "chardev.h"
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("xsc");
+MODULE_AUTHOR("shsf_hzw");
 
-extern RULE *rule_head;
+struct rule rule_head;
 
 static struct nf_hook_ops nfho_pre_routing;
 static struct nf_hook_ops nfho_local_in;
@@ -26,23 +26,47 @@ static struct nf_hook_ops nfho_post_routing;
 
 int init_rule_list(void)
 {
-    rule_head = (RULE *)kmalloc(sizeof(RULE), GFP_KERNEL);
-    if(rule_head == NULL){
-        printk("ROLE_head kmalloc fail!!\n");
-        return -1;
+    //struct rule *tmp;
+    INIT_LIST_HEAD(&(rule_head.list));
+    /*
+    tmp = (struct rule *)kzalloc(sizeof(struct rule), GFP_KERNEL);
+    tmp->protocol = IPPROTO_IP;
+    tmp->saddr.addr = inet_addr("10.11.55.167");
+    tmp->saddr.mask = 24;
+    tmp->tm.ltime.tm_hour = 8;
+    tmp->tm.ltime.tm_min = 0;
+    tmp->tm.ltime.tm_sec = 0;
+    tmp->tm.rtime.tm_hour = 17;
+    tmp->tm.rtime.tm_min = 0;
+    tmp->tm.rtime.tm_sec = 0;
+    tmp->action = REJECT;
+    list_add_tail(&(tmp->list), &(rule_head.list));
+    
+    printk("-----------------------------\n");
+    printk("          rule_list:         \n");
+    printk("-----------------------------\n");
+    list_for_each_entry(tmp, &rule_head.list, list){
+        printk(" saddr:    %pI4 / %u\n", &tmp->saddr.addr, tmp->saddr.mask);
+        printk(" sport:    %u\n\n", tmp->sport);
+        printk(" daddr:    %pI4 / %u\n", &tmp->daddr.addr, tmp->daddr.mask);
+        printk(" dport:    %u\n\n", tmp->dport);
+        printk(" protocol: %u\n", tmp->protocol);
+        printk(" ltime:    %02d:%02d:%02d\n", tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec);
+        printk(" rtime:    %02d:%02d:%02d\n", tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec);
+        printk(" action:   %s\n\n", tmp->action ? "Permit" : "Reject");
     }
-    printk("ROLE_head kmalloc success!!\n");
-    rule_head->next = NULL;
+    */
     return 0;
 }
 
 void destroy_rule_list(void){
-    RULE *pre, *tail;
-    pre = rule_head;
-    while(pre){
-        tail = pre->next;
-        kfree(pre);
-        pre = tail;
+    struct rule *tmp;
+    struct list_head *pos = NULL, *p;
+
+    list_for_each_safe(pos, p, &rule_head.list){
+        tmp = list_entry(pos, struct rule, list);
+        list_del(pos);
+        kfree(tmp);
     }
 }
 
@@ -105,7 +129,7 @@ void nf_post_routing_init(void)
 static int kexec_test_init(void)
 {
     printk("Init: kexec test start... \n");
-    if(init_rule_list() == -1){
+    if(init_rule_list() != 0){
         printk("init rule list failed!!!\n");
         return -1;
     }

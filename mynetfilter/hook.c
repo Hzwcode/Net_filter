@@ -9,7 +9,7 @@
 
 MODULE_LICENSE("GPL");
 
-RULE *rule_head;
+extern struct rule rule_head;
 extern struct mem_dev *mem_devp;
 
 __u8 GetProtocol(struct sk_buff *skb){
@@ -69,7 +69,7 @@ Bool CompareID_with_mask(uint32_t addr1, uint32_t addr2, uint8_t mask){
 	return (addr1_temp == addr2_temp);
 }
 
-Bool CompareTime(RULE_TIME rule_time, ktime_t package_time){
+Bool CompareTime(struct rule_time rule_tm, ktime_t package_time){
 	struct rtc_time tm;
 	int hour, min, sec;
 	//int year, month, mday, wday, yday;
@@ -83,10 +83,10 @@ Bool CompareTime(RULE_TIME rule_time, ktime_t package_time){
     //wday = tm.tm_wday;
     //yday = tm.tm_yday;
 	//printk("time@ (%04d-%02d-%02d %02d:%02d:%02d)\n",year, month, mday, hour, min, sec);
-    if(rule_time.valid == true
-    	&& hour >= rule_time.begin_time.tm_hour && hour <= rule_time.end_time.tm_hour
-    	&& min  >= rule_time.begin_time.tm_min  && min  <= rule_time.end_time.tm_min
-    	&& sec  >= rule_time.begin_time.tm_sec  && sec  <= rule_time.end_time.tm_sec)
+    if(rule_tm.valid == true
+    	&& hour >= rule_tm.ltime.tm_hour && hour <= rule_tm.rtime.tm_hour
+    	&& min  >= rule_tm.ltime.tm_min  && min  <= rule_tm.rtime.tm_min
+    	&& sec  >= rule_tm.ltime.tm_sec  && sec  <= rule_tm.rtime.tm_sec)
     {
     	return true;
     }
@@ -95,12 +95,13 @@ Bool CompareTime(RULE_TIME rule_time, ktime_t package_time){
 
 Bool filter(struct sk_buff *skb){
 	struct sk_buff *sk; 
-	RULE *ptr;
+	struct rule *ptr;
 	uint32_t s_addr, d_addr;
 	__u8 protocol;
 	uint16_t s_port, d_port;
 	ktime_t tm;
-	Bool success;
+	Bool match = false;
+	Bool flag = false;
 
 	if(!skb) 
 		return false;
@@ -113,24 +114,49 @@ Bool filter(struct sk_buff *skb){
 	d_port = GetPort(sk, DEST);
 	tm = sk->tstamp;
 
-	ptr = rule_head;
-	while(ptr){
-		success  = ptr->action;
-		success &= ptr->s_addr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->s_addr.addr,s_addr,ptr->s_addr.mask);
-		success &= ptr->d_addr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->d_addr.addr,d_addr,ptr->d_addr.mask);
-		success &= ptr->s_port == ANY_PORT ? true : ptr->s_port == s_port;
-		success &= ptr->d_port == ANY_PORT ? true : ptr->d_port == d_port;
-		success &= ptr->protocol == ANY_PROTOCOL ? true : ptr->protocol == protocol;
-		success &= CompareTime(ptr->tm, tm);
-		if(success) 
+	list_for_each_entry(ptr, &rule_head.list, list){
+		match = ptr->action ? 0 : 1;
+		if(!match){
+			printk("action false, default accept.\n");
+			continue;
+		}
+		match = (ANY_TIME(ptr->tm) || CompareTime(ptr->tm, tm));
+		if(!match){
+			printk("time false, does not match.\n");
+			continue;
+		}
+		match = (ptr->saddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->saddr.addr,s_addr,ptr->saddr.mask));
+		if(!match){
+			printk("src_addr false, does not match.\n");
+			continue;
+		}
+		match = (ptr->daddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->daddr.addr,d_addr,ptr->daddr.mask));
+		if(!match){
+			printk("dest_addr false, does not match.\n");
+			continue;
+		}	
+		match = (ptr->sport == ANY_PORT ? true : ptr->sport == s_port);
+		if(!match){
+			printk("src_port false, does not match.\n");
+			continue;
+		}
+		match = (ptr->dport == ANY_PORT ? true : ptr->dport == d_port);
+		if(!match){
+			printk("dest_port false, does not match.\n");
+			continue;
+		}
+		match = (ptr->protocol == ANY_PROTOCOL ? true : ptr->protocol == protocol);
+		if(!match){
+			printk("protocol false, does not match.\n");
+			continue;
+		}
+		if(match){
+			flag = true;
 			break;
-		ptr = ptr->next;
+		}
 	}
-	if(!ptr) 
-		success = false;
-	return success;
+	return flag;
 }
-
 
 unsigned int hook_pre_routing(unsigned int hooknum,
 			struct sk_buff *skb,
@@ -140,8 +166,10 @@ unsigned int hook_pre_routing(unsigned int hooknum,
 {
 	//printk("hook_pre_routing\n");
 	/*
-	if(filter(skb) == true)
+	if(filter(skb) == true) {
+		printk("receive a packet from %s and drop", addr2inet(GetAddr(skb, SRC)));
 		return NF_DROP;
+	}
 	*/
 	return NF_ACCEPT;
 }
@@ -175,8 +203,10 @@ unsigned int hook_local_out(unsigned int hooknum,
 {
 	//printk("hook_local_out\n");
 	/*
-	if(filter(skb) == true)
+	if(filter(skb) == true) {
+		printk("send a packet to %s and drop", addr2inet(GetAddr(skb, DEST)));
 		return NF_DROP;
+	}
 	*/
 	return NF_ACCEPT;
 }

@@ -10,6 +10,8 @@ struct mem_dev *mem_devp;  //设备结构体指针
 int mutex = 1;
 int counter = 0;
 
+extern struct rule rule_head;
+
 struct file_operations rule_fops = {
 	.owner = THIS_MODULE,
 	.llseek = my_llseek,
@@ -18,6 +20,103 @@ struct file_operations rule_fops = {
 	.write = my_write,
 	.release = my_release,
 };
+/*
+unsigned int inet2addr(char *str){
+	int a,b,c,d;
+	uint8_t arr[4];
+	sscanf(str, "%d.%d.%d.%d", &a,&b,&c,&d);
+	arr[0] = a; arr[1] =b; arr[2] = c; arr[3] = d;
+	return *(unsigned int *)&arr;
+}
+*/
+char* addr2inet(unsigned int addr){
+	char *str = NULL;
+	uint8_t *arr;
+	unsigned a,b,c,d;
+	if((str = kmalloc(20 * sizeof(char), GFP_KERNEL)) ==NULL){
+		printk("kmalloc error in addr2inet\n");
+		return NULL;
+	}
+	arr = (uint8_t *)&addr;
+	a = arr[0]; b = arr[1]; c = arr[2]; d = arr[3];
+	sprintf(str, "%u.%u.%u.%u",a,b,c,d);
+	return str;
+}
+
+void PrintRule(void){
+	struct rule *tmp;
+	uint32_t addr;
+	printk("-----------------------------\n");
+    printk("          rule_list:         \n");
+    printk("-----------------------------\n");
+	list_for_each_entry(tmp, &rule_head.list, list){
+        printk(" saddr:      %pI4 / %u\n", &tmp->saddr.addr, tmp->saddr.mask);
+        addr = MASK_IP(tmp->saddr.addr, tmp->saddr.mask);
+        printk(" mask_saddr: %pI4 \n", &addr);
+        printk(" sport:      %u\n\n", tmp->sport);
+        printk(" daddr:      %pI4 / %u\n", &tmp->daddr.addr, tmp->daddr.mask);
+        addr = MASK_IP(tmp->daddr.addr, tmp->daddr.mask);
+        printk(" mask_daddr: %pI4 \n", &addr);
+        printk(" dport:      %u\n\n", tmp->dport);
+        switch(tmp->protocol){
+			case IPPROTO_TCP:
+				printk(" protocol:   TCP\n\n");
+				break;
+			case IPPROTO_UDP:
+				printk(" protocol:   UDP\n\n");
+				break;
+			case IPPROTO_ICMP:
+				printk(" protocol:   ICMP\n\n");
+				break;
+			case ANY_PROTOCOL:
+				printk(" protocol:   ANY\n\n");
+				break;
+			default:
+				printk(" protocol:   unknow\n\n");
+		}
+		printk(" time_valid: %s\n", tmp->tm.valid ? "true" : "false");
+        printk(" begin_time: %02d:%02d:%02d\n", tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec);
+        printk(" end_time:   %02d:%02d:%02d\n\n", tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec);
+        printk(" action:     %s\n\n", tmp->action ? "Permit" : "Reject");
+    }
+}
+
+struct rule* str2rule(const char *buf){
+	struct rule *tail = NULL;
+	int lhour, lmin, lsec, rhour, rmin, rsec;
+	uint16_t mask1, mask2, protocol;
+	char saddr[30], daddr[30];
+	int ret, time_valid = 0, action;
+	if(buf == NULL || strlen(buf) == 0) {
+		printk("Error: NULL buf in str2rule.\n");
+		return NULL;
+	}
+	if((tail = (struct rule*)kmalloc(sizeof(struct rule), GFP_KERNEL)) == NULL){
+		printk("Error: kmalloc fail in str2rule.\n");
+		return NULL;
+	}
+	ret = sscanf(buf, "%s /%hu %s /%hu %hu %hu %hu %d:%d:%d %d:%d:%d %d %d", 
+		saddr, &mask1, daddr, &mask2,
+		&tail->sport, &tail->dport, &protocol,
+		&lhour, &lmin, &lsec, &rhour, &rmin, &rsec, &time_valid, &action);
+	if(ret < 15){
+		printk("sscanf fail , only complete %d scanfs\n", ret);
+	}
+	tail -> saddr.addr = inet_addr(saddr);
+	tail -> saddr.mask = mask1;
+	tail -> daddr.addr = inet_addr(daddr);
+	tail -> daddr.mask = mask2;
+	tail -> protocol = protocol;
+	tail -> tm.ltime.tm_hour = lhour;
+	tail -> tm.ltime.tm_min = lmin;
+	tail -> tm.ltime.tm_sec = lsec;
+	tail -> tm.rtime.tm_hour = rhour;
+	tail -> tm.rtime.tm_min = rmin;
+	tail -> tm.rtime.tm_sec = rsec;
+	tail -> tm.valid = time_valid;
+	tail -> action = action;
+	return tail;
+}
 
 int my_open(struct inode *inode, struct file *file){
 	//printk("memdev open success!\n");
@@ -62,7 +161,7 @@ ssize_t my_read(struct file *file, char __user *buf, size_t size, loff_t *ppos){
 	}
 	*ppos += count;
 	printk(KERN_INFO"read %d byte(s) from %d\n", count, p);
-	printk("<kernel>read content is [%s]\n", buf);
+	printk("<kernel>read content is \n[%s]\n", buf);
 	return count;
 }
 
@@ -73,6 +172,7 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 	unsigned int p = *ppos;
 	unsigned int count = size;
 	struct mem_dev *dev = file->private_data;  //获得设备结构体指针
+	struct rule *tail;
 
 	if(p >= MEMDEV_SIZE)
 		return 0;
@@ -84,8 +184,19 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 		return -EFAULT;
 	}
 	*ppos += count;
+	printk("dev_rule_write: success\n");
 	printk(KERN_INFO"written %d byte(s) from %d\n", count, p);
-	printk("<kernel>written content is [%s]\n", buf);
+	printk("<kernel>written content is \n[%s]\n", dev->data + p);
+
+	//tail = str2rule(dev->data + p);
+	tail = str2rule(buf);
+	if(tail == NULL){
+	 	printk("null point tail in mywrite\n");
+	}
+	
+	list_add_tail(&(tail->list), &(rule_head.list));
+	
+	PrintRule();
 	return count;
 }
 
@@ -126,7 +237,7 @@ int dev_init(void){
 				//return -EBUSY;
 				return ret;
 			}
-			printk("dynamic register devno success!\n");
+			printk("dynamic1 register devno success!\n");
 			major = MAJOR(dev_id);
 			minor = MINOR(dev_id);
 		}
@@ -136,13 +247,13 @@ int dev_init(void){
 	}
 	//否则由内核动态分配
 	else{
-		ret = alloc_chrdev_region(&dev_id, minor, 1, "memdev");     //动态注册设备号
+		ret = alloc_chrdev_region(&dev_id, minor, MEMDEV_NR_DEVS, "memdev");     //动态注册设备号
 		if(ret < 0){
 			printk("register devno error!\n");
 			//return -EBUSY;
 			return ret;
 		}
-		printk("dynamic register devno success!\n");
+		printk("dynamic2 register devno success!\n");
 		major = MAJOR(dev_id);
 		minor = MINOR(dev_id);
 	}

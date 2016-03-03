@@ -11,14 +11,20 @@
 #include <linux/slab.h>
 #include <asm/uaccess.h>
 
+#include "netfilter.h"
+
 #define MEMDEV_SIZE 4096
-#define MEMDEV_NR_DEVS 2
+#define MEMDEV_NR_DEVS 1
 
 struct mem_dev{
 	char *data;         //分配到内存的起始地址
 	unsigned long size; //内存的大小
 };
 
+unsigned int inet2addr(char *str);
+char* addr2inet(unsigned addr);
+void PrintRule(void);
+struct rule* str2rule(const char *buf);
 int my_open(struct inode *inode, struct file *file);
 int my_release(struct inode *inode, struct file *file);
 loff_t my_llseek(struct file *file, loff_t offset, int whence);

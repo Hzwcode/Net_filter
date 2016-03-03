@@ -34,30 +34,34 @@ typedef short Bool;
 #define SRC 0
 #define DEST 1
 
+#define PERMIT 1
+#define REJECT 0
+
 #define ANY_ADDR 0
 #define ANY_PORT 0xffff
-#define ANY_PROTOCOL 0xffff
+#define ANY_PROTOCOL 0xff
+#define ANY_TIME(tm) (tm.valid == 0)
 
-#define MASK_IP(x, mask) (x & (0xffffffff << (32 - mask)))
+#define MASK_IP(x, mask) (x & (0xffffffff >> (32 - mask)))
 
-typedef struct rule_time{
-     struct rtc_time begin_time;
-     struct rtc_time end_time;
+struct rule_time{
+     struct rtc_time ltime;
+     struct rtc_time rtime;
      Bool valid;
-}RULE_TIME; 
+}; 
 
-//规则
+//规则结构
 typedef struct rule{
      struct{
           uint32_t addr;        //IP地址
           uint8_t mask;         //掩码
-     }s_addr, d_addr;           //源IP地址，目的IP地址
-	uint16_t s_port, d_port;   //源端口，目的端口
+     }saddr, daddr;             //源IP地址，目的IP地址
+	uint16_t sport, dport;     //源端口，目的端口
 	__u8 protocol;             //协议类型                      
-     RULE_TIME tm;              //时间段
+     struct rule_time tm;       //时间段
 	Bool action;               //动作
 
-     struct rule *next;         //下一结点域
+     struct list_head list;     //双项链表
 }RULE;
 
 unsigned int hook_pre_routing(unsigned int hooknum,
@@ -90,5 +94,13 @@ unsigned int hook_post_routing(unsigned int hooknum,
                          const struct net_device *out,
                          int (*okfn)(struct sk_buff *));
 
+static inline unsigned int inet_addr(char *str)
+{
+     int a, b, c, d;
+     char arr[4];
+     sscanf(str, "%d.%d.%d.%d", &a, &b, &c, &d);
+     arr[0] = a; arr[1] = b; arr[2] = c; arr[3] = d;
+     return *(unsigned int *)arr;
+}
 
 #endif
