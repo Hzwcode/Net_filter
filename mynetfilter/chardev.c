@@ -10,7 +10,8 @@ struct mem_dev *mem_devp;  //设备结构体指针
 int mutex = 1;
 int counter = 0;
 
-extern struct rule rule_head;
+extern struct rule rule_pre_routing;
+extern struct rule rule_local_out;
 
 struct file_operations rule_fops = {
 	.owner = THIS_MODULE,
@@ -28,7 +29,7 @@ unsigned int inet2addr(char *str){
 	arr[0] = a; arr[1] =b; arr[2] = c; arr[3] = d;
 	return *(unsigned int *)&arr;
 }
-*/
+
 char* addr2inet(unsigned int addr){
 	char *str = NULL;
 	uint8_t *arr;
@@ -42,21 +43,16 @@ char* addr2inet(unsigned int addr){
 	sprintf(str, "%u.%u.%u.%u",a,b,c,d);
 	return str;
 }
-
+*/
 void PrintRule(void){
 	struct rule *tmp;
-	uint32_t addr;
 	printk("-----------------------------\n");
     printk("          rule_list:         \n");
     printk("-----------------------------\n");
-	list_for_each_entry(tmp, &rule_head.list, list){
+	list_for_each_entry(tmp, &rule_pre_routing.list, list){
         printk(" saddr:      %pI4 / %u\n", &tmp->saddr.addr, tmp->saddr.mask);
-        addr = MASK_IP(tmp->saddr.addr, tmp->saddr.mask);
-        printk(" mask_saddr: %pI4 \n", &addr);
         printk(" sport:      %u\n\n", tmp->sport);
         printk(" daddr:      %pI4 / %u\n", &tmp->daddr.addr, tmp->daddr.mask);
-        addr = MASK_IP(tmp->daddr.addr, tmp->daddr.mask);
-        printk(" mask_daddr: %pI4 \n", &addr);
         printk(" dport:      %u\n\n", tmp->dport);
         switch(tmp->protocol){
 			case IPPROTO_TCP:
@@ -67,6 +63,9 @@ void PrintRule(void){
 				break;
 			case IPPROTO_ICMP:
 				printk(" protocol:   ICMP\n\n");
+				break;
+			case IPPROTO_IP:
+				printk(" protocol:   IP\n\n");
 				break;
 			case ANY_PROTOCOL:
 				printk(" protocol:   ANY\n\n");
@@ -81,7 +80,7 @@ void PrintRule(void){
         printk("-----------------------------\n");
     }
 }
-
+/*
 struct rule* str2rule(const char *buf){
 	struct rule *tail = NULL;
 	int lhour, lmin, lsec, rhour, rmin, rsec;
@@ -118,11 +117,10 @@ struct rule* str2rule(const char *buf){
 	tail -> action = action;
 	return tail;
 }
-
+*/
 int my_open(struct inode *inode, struct file *file){
-	//printk("memdev open success!\n");
-	struct mem_dev *dev;
-	int num;
+	struct mem_dev *dev = NULL;
+	int num = 0;
 	if(mutex != 1)
 		return EBUSY;
 	mutex = 0;
@@ -133,7 +131,9 @@ int my_open(struct inode *inode, struct file *file){
 	dev = &mem_devp[num];
 	//将设备描述结构指针赋值给文件私有数据指针
 	file->private_data = dev;
-	printk("<count>%d times to call the device.\n", ++counter);
+	counter++;
+	printk("memdev open success!\n");
+	printk("<open> %d times to call the device.\n", counter);
 	return 0;
 }
 
@@ -144,8 +144,6 @@ int my_release(struct inode *inode, struct file *file){
 }
 
 ssize_t my_read(struct file *file, char __user *buf, size_t size, loff_t *ppos){
-	//printk("memdev read success!\n");
-	//memcpy(buf, "kernel test_data", size);
 	unsigned int p = *ppos;    //p位当前读写位置
 	unsigned int count = size;  //一次读取的大小
 	
@@ -157,26 +155,25 @@ ssize_t my_read(struct file *file, char __user *buf, size_t size, loff_t *ppos){
   	if(count > MEMDEV_SIZE - p)
    	    count = MEMDEV_SIZE - p;  //count大于读取的范围，则缩小读取范围
    	//读取数据到用户空间
-	if(copy_to_user(buf, (void *)(dev->data + p), count)){
+	if(copy_to_user((void *)buf, dev->data + p, count) != 0){
+		printk("Failed to copy_to_user\n");
 		return -EFAULT;
 	}
 	*ppos += count;
-	printk(KERN_INFO"read %d byte(s) from %d\n", count, p);
-	printk("<kernel>read content is \n[%s]\n", buf);
+	printk("dev_rule_read: success\n");
+	printk("read %d byte(s) from %d\n", count, p);
+	printk("<kernel>read content is\n[%s]\n", buf);
 	return count;
 }
 
 ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos){
-	//printk("memdev write success!\n");
-	//char kbuf[20];
-	//memcpy(kbuf, buf, size);
 	unsigned int p = *ppos;
 	unsigned int count = size;
 	struct mem_dev *dev = file->private_data;  //获得设备结构体指针
-	struct list_head *pos, *q;
-	struct rule *tmp;
+	struct list_head *pos = NULL, *q = NULL;
+	struct rule *tmp = NULL, *tmp2 = NULL;
 	int nline, off, ret, i;
-	char *buffer;
+	char *buffer = NULL;
 	char saddr[30], daddr[30];
 
 	if(p >= MEMDEV_SIZE)
@@ -185,21 +182,30 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 		count = MEMDEV_SIZE - p;
 
 	//从用户空间写入数据
-	if(copy_from_user(dev->data + p, buf, count)){
+	if(copy_from_user(dev->data + p, (void *)buf, count)){
+		printk("Failed to copy_from_user\n");
 		return -EFAULT;
 	}
+
 	*ppos += count;
+
 	printk("dev_rule_write: success\n");
-	printk(KERN_INFO"written %d byte(s) from %d\n", count, p);
+	printk("written %d byte(s) from %d\n", count, p);
 	printk("<kernel>written content is \n[%s]\n", dev->data + p);
 
-	list_for_each_safe(pos, q, &rule_head.list){
+	list_for_each_safe(pos, q, &rule_pre_routing.list){
 		tmp = list_entry(pos, struct rule, list);
 		list_del(pos);
 		kfree(tmp);
 	}
 
-	buffer = dev->data + p;
+	list_for_each_safe(pos, q, &rule_local_out.list){
+		tmp = list_entry(pos, struct rule, list);
+		list_del(pos);
+		kfree(tmp);
+	}
+
+	buffer = dev->data;
 	nline = 0;
 	off = 0;
 	sscanf(buffer, "%d%n", &nline, &off);
@@ -218,9 +224,11 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 						  &tmp->tm.ltime.tm_hour, &tmp->tm.ltime.tm_min, &tmp->tm.ltime.tm_sec,
 						  &tmp->tm.rtime.tm_hour, &tmp->tm.rtime.tm_min, &tmp->tm.rtime.tm_sec,
 						  &tmp->action, &off);
+		buffer += off;
 		tmp -> saddr.addr = inet_addr(saddr);
 		tmp -> daddr.addr = inet_addr(daddr);
-		printk("%s/%hhu:%hu, %s/%hhu:%hu, %hhu, %hu, %02d:%02d:%02d, %02d:%02d:%02d, %hu\n", 
+		/*
+		printk("%s /%hhu:%hu, %s /%hhu:%hu, %hhu, %hu, %02d:%02d:%02d, %02d:%02d:%02d, %hu\n", 
 				saddr, tmp->saddr.mask, tmp->sport,
 				daddr, tmp->daddr.mask, tmp->dport,
 				tmp->protocol,
@@ -228,11 +236,17 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 				tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec,
 				tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec,
 				tmp->action);
+		*/
 		if(ret < 15){
 			printk("sscanf fail , only complete %d scanfs\n", ret);
 		}
-		buffer += off;
-		list_add_tail(&(tmp->list), &(rule_head.list));
+		list_add_tail(&(tmp->list), &(rule_pre_routing.list));
+		if((tmp2 = (struct rule*)kzalloc(sizeof(struct rule), GFP_KERNEL)) == NULL){
+			printk("Error: kmalloc fail.\n");
+			break;
+		}
+		memmove(tmp2, tmp, sizeof(struct rule));
+		list_add_tail(&(tmp2->list), &(rule_local_out.list));
 	}
 
 	PrintRule();
@@ -316,27 +330,32 @@ int dev_init(void){
 	printk("hello kernel, cdev_add success!\n");
 
 	/* 为设备描述结构分配内存*/
-  	mem_devp = kmalloc(MEMDEV_NR_DEVS * sizeof(struct mem_dev), GFP_KERNEL);//kmalloc函数返回的是虚拟地址(线性地址).
+  	mem_devp = kzalloc(MEMDEV_NR_DEVS * sizeof(struct mem_dev), GFP_KERNEL);//kmalloc函数返回的是虚拟地址(线性地址).
 	if(!mem_devp){  //申请失败
 		printk("mem_dev kmalloc error!\n");
 		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
 		return -ENOMEM;
 	}
-	memset(mem_devp, 0, sizeof(struct mem_dev));  //新申请的内存做初始化工作
+	//memset(mem_devp, 0, sizeof(struct mem_dev));  //新申请的内存做初始化工作
 
 	/*为设备分配内存*/
   	for(i = 0; i < MEMDEV_NR_DEVS; i++) {
         mem_devp[i].size = MEMDEV_SIZE;
-        mem_devp[i].data = kmalloc(MEMDEV_SIZE, GFP_KERNEL);//分配内存给两个设备
-        memset(mem_devp[i].data, 0, MEMDEV_SIZE);//初始化新分配到的内存
+        mem_devp[i].data = kzalloc(MEMDEV_SIZE, GFP_KERNEL);//分配内存给两个设备
+        //memset(mem_devp[i].data, 0, MEMDEV_SIZE);//初始化新分配到的内存
   	}
 	return 0;
 }
 
 void dev_exit(void){
+	int i;
 	//从内核中删除cdev
 	cdev_del(&my_cdev);
 	//注销设备号
 	unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
+	for(i = 0; i < MEMDEV_NR_DEVS; i++) {
+    	kfree(mem_devp[i].data);
+  	}
+  	kfree(mem_devp);
 	printk("good bye kernel, dev exit ...\n");
 }

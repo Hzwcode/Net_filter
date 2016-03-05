@@ -9,8 +9,9 @@
 
 MODULE_LICENSE("GPL");
 
-extern struct rule rule_head;
-extern struct mem_dev *mem_devp;
+extern struct rule rule_pre_routing;
+extern struct rule rule_local_out;
+//extern struct mem_dev *mem_devp;
 
 __u8 GetProtocol(struct sk_buff *skb){
 	struct sk_buff *sk;
@@ -30,14 +31,14 @@ uint32_t GetAddr(struct sk_buff *skb, int flag){
 	else if(flag == DEST)
 		return ip->daddr;
 	else
-		return 0;
+		return ANY_ADDR;
 }
 
 uint16_t GetPort(struct sk_buff *skb, int flag){
 	struct sk_buff *sk;
 	struct tcphdr *tcph;
 	struct udphdr *udph;
-	uint16_t port = 0;
+	uint16_t port = ANY_PORT;
 	sk = skb_copy(skb, 1);
 	tcph = tcp_hdr(sk);
 	udph = udp_hdr(sk);
@@ -64,94 +65,210 @@ uint16_t GetPort(struct sk_buff *skb, int flag){
 
 Bool CompareID_with_mask(uint32_t addr1, uint32_t addr2, uint8_t mask){
 	uint32_t addr1_temp, addr2_temp;
-	addr1_temp = MASK_IP(addr1, mask);
-	addr2_temp = MASK_IP(addr2, mask);
-	return (addr1_temp == addr2_temp);
+	Bool flag = false;
+	addr1_temp = ntohl(addr1);
+	addr2_temp = ntohl(addr2);
+
+	addr1_temp = MASK_IP(addr1_temp, mask);
+	addr2_temp = MASK_IP(addr2_temp, mask);
+
+	flag = (addr1_temp == addr2_temp);
+
+	if(flag == true){
+		printk("[Addr match!!!]\n");
+	}
+
+	return flag;
 }
 
-Bool CompareTime(struct rule_time rule_tm, ktime_t package_time){
-	struct rtc_time tm;
+Bool CompareTime(struct rule_time rule_tm, struct rtc_time tm){
 	int hour, min, sec;
-	//int year, month, mday, wday, yday;
-	rtc_time_to_tm(package_time.tv64/1000000000 + (8 * 60 * 60), &tm);
-	//year = tm.tm_year + 1900;
-  	//month = tm.tm_mon + 1;
-  	//mday = tm.tm_mday;
+	int lhour, lmin, lsec, rhour, rmin, rsec;
+	int nowsec, ltimesec, rtimesec;
   	hour = tm.tm_hour;
   	min = tm.tm_min;
     sec = tm.tm_sec;
-    //wday = tm.tm_wday;
-    //yday = tm.tm_yday;
-	//printk("time@ (%04d-%02d-%02d %02d:%02d:%02d)\n",year, month, mday, hour, min, sec);
-    if(rule_tm.valid == true
-    	&& hour >= rule_tm.ltime.tm_hour && hour <= rule_tm.rtime.tm_hour
-    	&& min  >= rule_tm.ltime.tm_min  && min  <= rule_tm.rtime.tm_min
-    	&& sec  >= rule_tm.ltime.tm_sec  && sec  <= rule_tm.rtime.tm_sec)
-    {
-    	return true;
-    }
+    lhour = rule_tm.ltime.tm_hour;
+  	lmin = rule_tm.ltime.tm_min;
+    lsec = rule_tm.ltime.tm_sec;
+    rhour = rule_tm.rtime.tm_hour;
+  	rmin = rule_tm.rtime.tm_min;
+    rsec = rule_tm.rtime.tm_sec;
+
+    nowsec = hour * 3600 + min * 60 + sec;
+	ltimesec = lhour * 3600 + lmin * 60 + lsec;
+	rtimesec = rhour * 3600 + rmin * 60 + rsec;
+
+	if(nowsec >= ltimesec && nowsec <= rtimesec){
+		printk("[Time match!!!]\n");
+    	printk("the package time: %02d:%02d:%02d\n", hour, min, sec);
+    	printk("rule  begin time: %02d:%02d:%02d\n", lhour, lmin, lsec);
+    	printk("rule  end   time: %02d:%02d:%02d\n", rhour, rmin, rsec);
+		return true;
+	}
     return false;
 }
-
-Bool filter(struct sk_buff *skb){
-	struct sk_buff *sk; 
+/*
+Bool filter_pre_routing(struct sk_buff *skb){
+	//struct sk_buff *sk; 
 	struct rule *ptr;
 	uint32_t s_addr, d_addr;
 	__u8 protocol;
 	uint16_t s_port, d_port;
-	ktime_t tm;
+	struct rtc_time tm;
+	struct timeval timeval;
+	unsigned long local_time;
 	Bool match = false;
 	Bool flag = false;
+	int n = 0;
 
 	if(!skb) 
 		return false;
 	
-	sk = skb_copy(skb,1);
-	protocol = GetProtocol(sk);
-	s_addr = GetAddr(sk, SRC);
-	d_addr = GetAddr(sk, DEST);
-	s_port = GetPort(sk, SRC);
-	d_port = GetPort(sk, DEST);
-	tm = sk->tstamp;
+	//sk = skb_copy(skb,1);
+	protocol = GetProtocol(skb);
+	s_addr = GetAddr(skb, SRC);
+	d_addr = GetAddr(skb, DEST);
+	s_port = GetPort(skb, SRC);
+	d_port = GetPort(skb, DEST);
 
-	list_for_each_entry(ptr, &rule_head.list, list){
+	do_gettimeofday(&timeval);
+	local_time = (u32)(timeval.tv_sec + (8 * 60 * 60));
+	rtc_time_to_tm(local_time, &tm);
+	
+	list_for_each_entry(ptr, &rule_pre_routing.list, list){
+		n++;
 		match = ptr->action ? 0 : 1;
 		if(!match){
-			printk("action false, default accept.\n");
+			//printk("action false, default accept.\n");
 			continue;
 		}
 		match = (ANY_TIME(ptr->tm) || CompareTime(ptr->tm, tm));
 		if(!match){
-			printk("time false, does not match.\n");
+			//printk("time false, does not match.\n");
 			continue;
 		}
 		match = (ptr->saddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->saddr.addr,s_addr,ptr->saddr.mask));
 		if(!match){
-			printk("src_addr false, does not match.\n");
+			//printk("src_addr false, does not match.\n");
 			continue;
 		}
 		match = (ptr->daddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->daddr.addr,d_addr,ptr->daddr.mask));
 		if(!match){
-			printk("dest_addr false, does not match.\n");
+			//printk("dest_addr false, does not match.\n");
 			continue;
 		}	
-		match = (ptr->sport == ANY_PORT ? true : ptr->sport == s_port);
+		match = (ptr->protocol == ANY_PROTOCOL) ? true : (ptr->protocol == protocol);
 		if(!match){
-			printk("src_port false, does not match.\n");
+			//printk("protocol false, does not match.\n");
 			continue;
 		}
-		match = (ptr->dport == ANY_PORT ? true : ptr->dport == d_port);
+		match = (ptr->sport == ANY_PORT) ? true : (ptr->sport == s_port);
 		if(!match){
-			printk("dest_port false, does not match.\n");
+			//printk("src_port false, does not match.\n");
 			continue;
 		}
-		match = (ptr->protocol == ANY_PROTOCOL ? true : ptr->protocol == protocol);
+		match = (ptr->dport == ANY_PORT) ? true : (ptr->dport == d_port);
 		if(!match){
-			printk("protocol false, does not match.\n");
+			//printk("dest_port false, does not match.\n");
 			continue;
 		}
 		if(match){
 			flag = true;
+			printk("Pre_routing: receive a packet from %pI4 and drop!\n", &s_addr);
+			printk("match the regulation %d success!\n", n);
+			printk("-----------------------------\n");
+			printk("[Drop a packet]\n");
+			printk(" saddr:      %pI4\n", &s_addr);
+			printk(" sport:      %u\n\n", s_port);
+			printk(" daddr:      %pI4\n", &d_addr);
+			printk(" dport:      %u\n\n", d_port);
+			printk(" protocol:   %hhu\n", protocol);
+			printk("-----------------------------\n");
+
+			break;
+		}
+	}
+	return flag;
+}
+*/
+Bool filter_local_out(struct sk_buff *skb){
+	//struct sk_buff *sk; 
+	struct rule *ptr;
+	uint32_t s_addr, d_addr;
+	__u8 protocol;
+	uint16_t s_port, d_port;
+	struct rtc_time tm;
+	struct timeval timeval;
+	unsigned long local_time;
+	Bool match = false;
+	Bool flag = false;
+	int n = 0;
+
+	if(!skb) 
+		return false;
+	
+	//sk = skb_copy(skb,1);
+	protocol = GetProtocol(skb);
+	s_addr = GetAddr(skb, SRC);
+	d_addr = GetAddr(skb, DEST);
+	s_port = GetPort(skb, SRC);
+	d_port = GetPort(skb, DEST);
+	
+	do_gettimeofday(&timeval);
+	local_time = (u32)(timeval.tv_sec + (8 * 60 * 60));
+	rtc_time_to_tm(local_time, &tm);
+
+	list_for_each_entry(ptr, &rule_local_out.list, list){
+		n++;
+		match = ptr->action ? 0 : 1;
+		if(!match){
+			//printk("action false, default accept.\n");
+			continue;
+		}
+		match = (ANY_TIME(ptr->tm) || CompareTime(ptr->tm, tm));
+		if(!match){
+			//printk("time false, does not match.\n");
+			continue;
+		}
+		match = (ptr->saddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->saddr.addr,s_addr,ptr->saddr.mask));
+		if(!match){
+			//printk("src_addr false, does not match.\n");
+			continue;
+		}
+		match = (ptr->daddr.addr == ANY_ADDR ? true : CompareID_with_mask(ptr->daddr.addr,d_addr,ptr->daddr.mask));
+		if(!match){
+			//printk("dest_addr false, does not match.\n");
+			continue;
+		}	
+		match = (ptr->protocol == ANY_PROTOCOL) ? true : (ptr->protocol == protocol);
+		if(!match){
+			//printk("protocol false, does not match.\n");
+			continue;
+		}
+		match = (ptr->sport == ANY_PORT) ? true : (ptr->sport == s_port);
+		if(!match){
+			//printk("src_port false, does not match.\n");
+			continue;
+		}
+		match = (ptr->dport == ANY_PORT) ? true : (ptr->dport == d_port);
+		if(!match){
+			//printk("dest_port false, does not match.\n");
+			continue;
+		}
+		if(match){
+			flag = true;
+			printk("Local_out: send a packet to %pI4 and drop!\n", &d_addr);
+			printk("match the regulation %d success!\n", n);
+			printk("-----------------------------\n");
+			printk("[Drop a packet]\n");
+			printk(" saddr:      %pI4\n", &s_addr);
+			printk(" sport:      %u\n\n", s_port);
+			printk(" daddr:      %pI4\n", &d_addr);
+			printk(" dport:      %u\n\n", d_port);
+			printk(" protocol:   %hhu\n", protocol);
+			printk("-----------------------------\n");
+
 			break;
 		}
 	}
@@ -166,32 +283,10 @@ unsigned int hook_pre_routing(unsigned int hooknum,
 {
 	//printk("hook_pre_routing\n");
 	/*
-	if(filter(skb) == true) {
-		printk("receive a packet from %s and drop", addr2inet(GetAddr(skb, SRC)));
+	if(filter_pre_routing(skb) == true) {
 		return NF_DROP;
 	}
 	*/
-	return NF_ACCEPT;
-}
-
-unsigned int hook_local_in(unsigned int hooknum,
-			struct sk_buff *skb,
-			const struct net_device *in,
-			const struct net_device *out,
-			int (*okfn)(struct sk_buff *))
-{
-	
-	//printk("hook_local_in\n");
-	return NF_ACCEPT;
-}
-
-unsigned int hook_forward(unsigned int hooknum,
-			struct sk_buff *skb,
-			const struct net_device *in,
-			const struct net_device *out,
-			int (*okfn)(struct sk_buff *))
-{
-	//printk("hook_forward\n");
 	return NF_ACCEPT;
 }
 
@@ -202,14 +297,34 @@ unsigned int hook_local_out(unsigned int hooknum,
 			int (*okfn)(struct sk_buff *))
 {
 	//printk("hook_local_out\n");
-	/*
-	if(filter(skb) == true) {
-		printk("send a packet to %s and drop", addr2inet(GetAddr(skb, DEST)));
+	if(filter_local_out(skb) == true) {
 		return NF_DROP;
 	}
-	*/
 	return NF_ACCEPT;
 }
+/*
+unsigned int hook_local_in(unsigned int hooknum,
+			struct sk_buff *skb,
+			const struct net_device *in,
+			const struct net_device *out,
+			int (*okfn)(struct sk_buff *))
+{
+	
+	printk("hook_local_in\n");
+	return NF_ACCEPT;
+}
+
+unsigned int hook_forward(unsigned int hooknum,
+			struct sk_buff *skb,
+			const struct net_device *in,
+			const struct net_device *out,
+			int (*okfn)(struct sk_buff *))
+{
+	printk("hook_forward\n");
+	return NF_ACCEPT;
+}
+
+
 
 unsigned int hook_post_routing(unsigned int hooknum,
 			struct sk_buff *skb,
@@ -217,6 +332,7 @@ unsigned int hook_post_routing(unsigned int hooknum,
 			const struct net_device *out,
 			int (*okfn)(struct sk_buff *))
 {
-	//printk("hook_post_routing\n");
+	printk("hook_post_routing\n");
 	return NF_ACCEPT;
 }
+*/

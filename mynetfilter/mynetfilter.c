@@ -15,55 +15,33 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("shsf_hzw");
 
-struct rule rule_head;
+struct rule rule_pre_routing;
+struct rule rule_local_out;
 
-static struct nf_hook_ops nfho_pre_routing;
-static struct nf_hook_ops nfho_local_in;
-static struct nf_hook_ops nfho_forward;
-static struct nf_hook_ops nfho_local_out;
-static struct nf_hook_ops nfho_post_routing;
-
+static struct nf_hook_ops nfho_pre_routing;         //负责发往本机的报文和路由穿过本机的报文
+//static struct nf_hook_ops nfho_local_in;
+//static struct nf_hook_ops nfho_forward;
+static struct nf_hook_ops nfho_local_out;           //负责本机发出去的报文
+//static struct nf_hook_ops nfho_post_routing;
 
 int init_rule_list(void)
 {
-    //struct rule *tmp;
-    INIT_LIST_HEAD(&(rule_head.list));
-    /*
-    tmp = (struct rule *)kzalloc(sizeof(struct rule), GFP_KERNEL);
-    tmp->protocol = IPPROTO_IP;
-    tmp->saddr.addr = inet_addr("10.11.55.167");
-    tmp->saddr.mask = 24;
-    tmp->tm.ltime.tm_hour = 8;
-    tmp->tm.ltime.tm_min = 0;
-    tmp->tm.ltime.tm_sec = 0;
-    tmp->tm.rtime.tm_hour = 17;
-    tmp->tm.rtime.tm_min = 0;
-    tmp->tm.rtime.tm_sec = 0;
-    tmp->action = REJECT;
-    list_add_tail(&(tmp->list), &(rule_head.list));
-    
-    printk("-----------------------------\n");
-    printk("          rule_list:         \n");
-    printk("-----------------------------\n");
-    list_for_each_entry(tmp, &rule_head.list, list){
-        printk(" saddr:    %pI4 / %u\n", &tmp->saddr.addr, tmp->saddr.mask);
-        printk(" sport:    %u\n\n", tmp->sport);
-        printk(" daddr:    %pI4 / %u\n", &tmp->daddr.addr, tmp->daddr.mask);
-        printk(" dport:    %u\n\n", tmp->dport);
-        printk(" protocol: %u\n", tmp->protocol);
-        printk(" ltime:    %02d:%02d:%02d\n", tmp->tm.ltime.tm_hour, tmp->tm.ltime.tm_min, tmp->tm.ltime.tm_sec);
-        printk(" rtime:    %02d:%02d:%02d\n", tmp->tm.rtime.tm_hour, tmp->tm.rtime.tm_min, tmp->tm.rtime.tm_sec);
-        printk(" action:   %s\n\n", tmp->action ? "Permit" : "Reject");
-    }
-    */
+    INIT_LIST_HEAD(&(rule_pre_routing.list));
+    INIT_LIST_HEAD(&(rule_local_out.list));
     return 0;
 }
 
 void destroy_rule_list(void){
-    struct rule *tmp;
-    struct list_head *pos = NULL, *p;
+    struct rule *tmp = NULL;
+    struct list_head *pos = NULL, *p = NULL;
 
-    list_for_each_safe(pos, p, &rule_head.list){
+    list_for_each_safe(pos, p, &rule_pre_routing.list){
+        tmp = list_entry(pos, struct rule, list);
+        list_del(pos);
+        kfree(tmp);
+    }
+
+    list_for_each_safe(pos, p, &rule_local_out.list){
         tmp = list_entry(pos, struct rule, list);
         list_del(pos);
         kfree(tmp);
@@ -80,7 +58,7 @@ void nf_pre_routing_init(void)
 
     nf_register_hook(&nfho_pre_routing);// 注册一个钩子函数
 }
-
+/*
 void nf_local_in_init(void)
 {
     nfho_local_in.hook = (nf_hookfn*)hook_local_in;
@@ -103,7 +81,7 @@ void nf_forward_init(void)
 
     nf_register_hook(&nfho_forward);// 注册一个钩子函数
 }
-
+*/
 void nf_local_out_init(void)
 {
     nfho_local_out.hook = (nf_hookfn*)hook_local_out;
@@ -114,7 +92,7 @@ void nf_local_out_init(void)
 
     nf_register_hook(&nfho_local_out);// 注册一个钩子函数
 }
-
+/*
 void nf_post_routing_init(void)
 {
     nfho_post_routing.hook = (nf_hookfn*)hook_post_routing;
@@ -125,19 +103,20 @@ void nf_post_routing_init(void)
 
     nf_register_hook(&nfho_post_routing);// 注册一个钩子函数
 }
-
+*/
 static int kexec_test_init(void)
 {
     printk("Init: kexec test start... \n");
+    nf_pre_routing_init();
+    //nf_local_in_init();
+    //nf_forward_init();
+    nf_local_out_init();
+    //nf_post_routing_init();
+
     if(init_rule_list() != 0){
         printk("init rule list failed!!!\n");
         return -1;
     }
-    nf_pre_routing_init();
-    nf_local_in_init();
-    nf_forward_init();
-    nf_local_out_init();
-    nf_post_routing_init();
 
     dev_init();
     return 0;
@@ -145,12 +124,12 @@ static int kexec_test_init(void)
 
 static void kexec_test_exit(void)
 {
-    printk("kexec test exit ...\n");
+    printk("Exit: kexec test exit ...\n");
     nf_unregister_hook(&nfho_pre_routing);
-    nf_unregister_hook(&nfho_local_in);
-    nf_unregister_hook(&nfho_forward);
+    //nf_unregister_hook(&nfho_local_in);
+    //nf_unregister_hook(&nfho_forward);
     nf_unregister_hook(&nfho_local_out);
-    nf_unregister_hook(&nfho_post_routing);
+    //nf_unregister_hook(&nfho_post_routing);
     destroy_rule_list();
 
     dev_exit();

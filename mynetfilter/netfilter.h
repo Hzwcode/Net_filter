@@ -42,7 +42,7 @@ typedef short Bool;
 #define ANY_PROTOCOL 0xff
 #define ANY_TIME(tm) (tm.valid == 0)
 
-#define MASK_IP(x, mask) (x & (0xffffffff >> (32 - mask)))
+#define MASK_IP(x, mask) (x & (0xffffffff << (!mask ? 0 : (32 - mask))))
 
 struct rule_time{
      struct rtc_time ltime;
@@ -69,7 +69,7 @@ unsigned int hook_pre_routing(unsigned int hooknum,
                          const struct net_device *in,
                          const struct net_device *out,
                          int (*okfn)(struct sk_buff *));
-
+/*
 unsigned int hook_local_in(unsigned int hooknum,
                          struct sk_buff *skb,
                          const struct net_device *in,
@@ -81,19 +81,19 @@ unsigned int hook_forward(unsigned int hooknum,
                          const struct net_device *in,
                          const struct net_device *out,
                          int (*okfn)(struct sk_buff *));
-
+*/
 unsigned int hook_local_out(unsigned int hooknum,
                          struct sk_buff *skb,
                          const struct net_device *in,
                          const struct net_device *out,
                          int (*okfn)(struct sk_buff *));
-
+/*
 unsigned int hook_post_routing(unsigned int hooknum,
                          struct sk_buff *skb,
                          const struct net_device *in,
                          const struct net_device *out,
                          int (*okfn)(struct sk_buff *));
-
+*/
 static inline unsigned int inet_addr(char *str)
 {
      int a, b, c, d;

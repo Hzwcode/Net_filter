@@ -24,7 +24,7 @@ struct mem_dev{
 unsigned int inet2addr(char *str);
 char* addr2inet(unsigned addr);
 void PrintRule(void);
-struct rule* str2rule(const char *buf);
+//struct rule* str2rule(const char *buf);
 int my_open(struct inode *inode, struct file *file);
 int my_release(struct inode *inode, struct file *file);
 loff_t my_llseek(struct file *file, loff_t offset, int whence);
