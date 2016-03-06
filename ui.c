@@ -58,7 +58,7 @@ void combo3_selected(GtkWidget *widget, gpointer data);
 int main(int argc, char *argv[])
 {
     GtkWidget *window;
-    //GdkPixbuf *pixbuf;
+    GdkPixbuf *pixbuf;
     PangoFontDescription *font;
     GtkWidget *hbox;
     GtkWidget *vbox;
@@ -78,8 +78,8 @@ int main(int argc, char *argv[])
     gtk_window_set_position(GTK_WINDOW(window),GTK_WIN_POS_CENTER);
     gtk_window_set_default_size(GTK_WINDOW(window),1200,500);
     gtk_container_set_border_width(GTK_CONTAINER(window),10);
-    //pixbuf = gdk_pixbuf_new_from_file("1.jpg", NULL);
-    //gtk_window_set_icon(GTK_WINDOW(window),pixbuf);
+    pixbuf = gdk_pixbuf_new_from_file("1.jpg", NULL);
+    gtk_window_set_icon(GTK_WINDOW(window),pixbuf);
 //字体设置
     font = pango_font_description_from_string("Sans");
     pango_font_description_set_size(font, 20 * PANGO_SCALE);
