@@ -1,3 +1,6 @@
+
+#define GTK_ENABLE_BROKEN
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <gtk/gtk.h>
@@ -16,6 +19,7 @@ gint row_count = 0;
 gint select_row = 0;
 gboolean select_flag = FALSE;
 GtkWidget *add_win;
+GtkWidget *log_win;
 GtkWidget *entry_saddr;
 GtkWidget *entry_smask;
 GtkWidget *entry_sport;
@@ -37,6 +41,8 @@ struct list{
 void show_list_from_file(const char *filename);
 void on_quit_clicked(GtkWidget *widget, gpointer window);
 void on_modify_clicked(GtkWidget *widget, gpointer window);
+void on_log_clicked(GtkWidget *widget, gpointer window);
+void on_log_ok_clicked(GtkWidget *widget, gpointer data);
 void on_del_clicked(GtkWidget *widget, gpointer window);
 void on_clear_clicked(GtkWidget *widget, gpointer window);
 void on_add_clicked(GtkWidget *widget, gpointer data);
@@ -44,6 +50,7 @@ void selection_made( GtkWidget *clist, gint row, gint column, GdkEventButton *ev
 void on_ok_clicked(GtkButton *button, gpointer data);
 void on_cancel_clicked(GtkButton *button, gpointer data);
 GtkWidget* create_addwin(void);
+GtkWidget* create_logwin(void);
 void combo1_selected(GtkWidget *widget, gpointer data);
 void combo2_selected(GtkWidget *widget, gpointer data);
 void combo3_selected(GtkWidget *widget, gpointer data);
@@ -51,7 +58,7 @@ void combo3_selected(GtkWidget *widget, gpointer data);
 int main(int argc, char *argv[])
 {
     GtkWidget *window;
-    GdkPixbuf *pixbuf;
+    //GdkPixbuf *pixbuf;
     PangoFontDescription *font;
     GtkWidget *hbox;
     GtkWidget *vbox;
@@ -59,6 +66,7 @@ int main(int argc, char *argv[])
     GtkWidget *button_add;
     GtkWidget *button_del;
     GtkWidget *button_modify;
+    GtkWidget *button_log;
     GtkWidget *button_clear;
     GtkWidget *button_quit;
 
@@ -70,8 +78,8 @@ int main(int argc, char *argv[])
     gtk_window_set_position(GTK_WINDOW(window),GTK_WIN_POS_CENTER);
     gtk_window_set_default_size(GTK_WINDOW(window),1200,500);
     gtk_container_set_border_width(GTK_CONTAINER(window),10);
-    pixbuf = gdk_pixbuf_new_from_file("1.jpg", NULL);
-    gtk_window_set_icon(GTK_WINDOW(window),pixbuf);
+    //pixbuf = gdk_pixbuf_new_from_file("1.jpg", NULL);
+    //gtk_window_set_icon(GTK_WINDOW(window),pixbuf);
 //字体设置
     font = pango_font_description_from_string("Sans");
     pango_font_description_set_size(font, 20 * PANGO_SCALE);
@@ -122,6 +130,10 @@ int main(int argc, char *argv[])
     gtk_box_pack_start(GTK_BOX(vbox), button_modify, FALSE, FALSE, 3);
     g_signal_connect(G_OBJECT(button_modify), "clicked", G_CALLBACK(on_modify_clicked), (gpointer)window);
 
+    button_log = gtk_button_new_with_label("Log");
+    gtk_box_pack_start(GTK_BOX(vbox), button_log, FALSE, FALSE, 3);
+    g_signal_connect(G_OBJECT(button_log), "clicked", G_CALLBACK(on_log_clicked), (gpointer)window);
+
     button_clear = gtk_button_new_with_label("Clear");
     gtk_box_pack_start(GTK_BOX(vbox), button_clear, FALSE, FALSE, 3);
     g_signal_connect(G_OBJECT(button_clear), "clicked", G_CALLBACK(on_clear_clicked), (gpointer)window);
@@ -148,7 +160,7 @@ void show_list_from_file(const char *filename)
     gint sport, dport, smask, dmask, protocol, valid, action;
     gint lhour, lmin, lsec, rhour, rmin, rsec;
     gchar string[7][32];
-    if((fp1 = fopen(filename,"r+")) == NULL){
+    if((fp1 = fopen(filename,"r")) == NULL){
         printf("open \"%s\" error!\n",filename);
         return;
     }
@@ -200,13 +212,13 @@ void show_list_from_file(const char *filename)
     }
     fclose(fp1);
     
-    if((fp0 = fopen(file_dev,"a+")) == NULL)
+    if((fp0 = fopen(file_dev,"w+")) == NULL)
     {
-       printf("open memdev error!\n");
+       printf("open \"%s\" error!\n",file_dev);
        return;
     }
-    if((fp1 = fopen(file_rule,"r+")) == NULL){
-        printf("open rule.txt error!\n");
+    if((fp1 = fopen(file_rule,"r")) == NULL){
+        printf("open \"%s\" error!\n",file_rule);
         return;
     }
 
@@ -220,14 +232,6 @@ void show_list_from_file(const char *filename)
         fprintf(fp0, "%s", buf);
     }
     fclose(fp1);
-    //检验是否写入内核正确
-    printf("\n【kernel_data】\n");
-    fseek(fp0, 0, SEEK_SET);
-    for(i = 0; i <= num; i++){
-        fgets(buf, 100, fp0);
-        printf("<row %d>: %s", i+1, buf);
-    }
-    printf("\n\n");
     fclose(fp0);
 }
 
@@ -370,6 +374,106 @@ void on_modify_clicked(GtkWidget *widget, gpointer window)
     gtk_widget_destroy(dialog);
 }
 
+void on_log_clicked(GtkWidget *widget, gpointer window)
+{
+    FILE *fp0 = NULL;
+    FILE *fp1 = NULL;
+    char buf[200];
+
+    if((fp0 = fopen(file_dev,"r")) == NULL){
+       printf("open \"%s\" error!\n", file_dev);
+    }
+    if((fp1 = fopen("log.txt","w+")) == NULL){
+       printf("open log.txt error!\n");
+    }
+    fseek(fp0, 0, SEEK_SET);
+    while(!feof(fp0)){
+        fgets(buf, 200, fp0);
+        fprintf(fp1, "%s", buf);
+    }
+    fclose(fp1);
+    fclose(fp0);
+
+    log_win = create_logwin();
+    gtk_widget_show(log_win);
+}
+
+GtkWidget* create_logwin(void){
+    GtkWidget *win;
+    GtkWidget *table;
+    GtkWidget *text;
+    GtkWidget *vscrollbar;
+    GtkWidget *bbox;
+    GtkWidget *vbox;
+    GtkWidget* button;
+    GdkFont *fixed_font;
+
+    FILE *fp;
+
+    win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(win),"Log information");
+    gtk_window_set_position(GTK_WINDOW(win),GTK_WIN_POS_CENTER);
+    g_signal_connect(G_OBJECT(win),"delete_event",G_CALLBACK(gtk_widget_destroy),win);
+    gtk_window_set_default_size(GTK_WINDOW(win),1300,400);
+    gtk_container_set_border_width(GTK_CONTAINER(win),10);
+
+    vbox = gtk_vbox_new(FALSE,0);
+    gtk_container_add(GTK_CONTAINER(win),vbox);
+
+    table = gtk_table_new (1, 2, FALSE);
+    gtk_table_set_row_spacing(GTK_TABLE(table), 0, 2);
+    gtk_table_set_col_spacing(GTK_TABLE(table), 0, 2);
+    gtk_box_pack_start(GTK_BOX(vbox), table, TRUE, TRUE, 0);
+    gtk_widget_show(table);
+
+    text = gtk_text_new(NULL, NULL);
+    gtk_text_set_editable(GTK_TEXT(text), FALSE);
+    gtk_table_attach (GTK_TABLE(table), text, 0, 1, 0, 1,
+    GTK_EXPAND | GTK_SHRINK | GTK_FILL,
+    GTK_EXPAND | GTK_SHRINK | GTK_FILL, 0, 0);
+    gtk_widget_show(text);
+
+    vscrollbar = gtk_vscrollbar_new(GTK_TEXT(text)->vadj);
+    gtk_table_attach(GTK_TABLE(table), vscrollbar, 1, 2, 0, 1,
+    GTK_FILL, GTK_EXPAND | GTK_SHRINK | GTK_FILL, 0, 0);
+    gtk_widget_show (vscrollbar);
+
+    fixed_font = gdk_font_load ("-misc-fixed-medium-r-*-*-*-140-*-*-*-*-*-*");
+
+    gtk_widget_realize (text);
+    gtk_text_freeze (GTK_TEXT (text));
+
+    if((fp = fopen("log.txt","r")) == NULL){
+       printf("open log.txt error!\n");
+    }
+
+    char buf[200];
+    while(!feof(fp)){
+        fgets(buf, 200, fp);
+        gtk_text_insert(GTK_TEXT(text), fixed_font, NULL, NULL, buf, -1);
+    }
+    fclose(fp);
+    gtk_text_thaw(GTK_TEXT(text));
+
+    bbox = gtk_hbutton_box_new();
+    gtk_box_pack_start(GTK_BOX(vbox),bbox,FALSE,FALSE,5);
+    gtk_box_set_spacing(GTK_BOX(bbox),5);
+
+    gtk_button_box_set_layout(GTK_BUTTON_BOX(bbox),GTK_BUTTONBOX_END);
+    button = gtk_button_new_from_stock(GTK_STOCK_OK);
+    g_signal_connect(G_OBJECT(button),"clicked",G_CALLBACK(on_log_ok_clicked),NULL);
+    gtk_box_pack_start(GTK_BOX(bbox),button,FALSE,FALSE,5);
+
+    gtk_widget_show_all(win);
+
+    return win;
+}
+
+void on_log_ok_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_widget_destroy(log_win);
+}
+
 void on_clear_clicked(GtkWidget *widget, gpointer window)
 {
     GtkWidget *dialog;
@@ -394,33 +498,12 @@ void on_clear_clicked(GtkWidget *widget, gpointer window)
         }
         fclose(fp1);
 
-        if((fp0 = fopen(file_dev,"a+")) == NULL)
+        if((fp0 = fopen(file_dev,"w+")) == NULL)
         {
            printf("open \"%s\" error!\n", file_dev);
            return;
         }
-        if((fp1 = fopen(file_rule,"r+")) == NULL){
-            printf("open \"%s\" error!\n", file_rule);
-            return;
-        }
-
-        fgets(buf, 100, fp1);
-        sscanf(buf, "%d", &num);
-        printf("【user_data】\n<row 1>: %d\n", num);
-        fprintf(fp0, "%s", buf);
-        for(i = 0; i < num; i++){
-            fgets(buf, 100, fp1);
-            printf("<row %d>: %s", i+2, buf);
-            fprintf(fp0, "%s", buf);
-        }
-        fclose(fp1);
-        printf("\n【kernel_data】\n");
-        fseek(fp0, 0, SEEK_SET);
-        for(i = 0; i <= num; i++){
-            fgets(buf, 80, fp0);
-            printf("<row %d>: %s", i+1, buf);
-        }
-        printf("\n\n");
+        fprintf(fp0, "%d", 0);
         fclose(fp0);
     }
     gtk_widget_destroy(dialog);
@@ -453,7 +536,7 @@ void on_del_clicked(GtkWidget *widget, gpointer window)
         if(gtk_dialog_run(GTK_DIALOG(dialog1)) == -5){
             gtk_clist_remove(GTK_CLIST(clist), select_row);
             --row_count;
-            if((fp1 = fopen(file_rule,"r+")) == NULL){
+            if((fp1 = fopen(file_rule,"r")) == NULL){
                 printf("open \"%s\" error!\n",file_rule);
                 return;
             }
@@ -496,13 +579,13 @@ void on_del_clicked(GtkWidget *widget, gpointer window)
             }
             fclose(fp1);
 
-            if((fp0 = fopen(file_dev,"a+")) == NULL)
+            if((fp0 = fopen(file_dev,"w+")) == NULL)
             {
-               printf("open memdev error!\n");
+               printf("open \"%s\" error!\n", file_dev);
                return;
             }
-            if((fp1 = fopen(file_rule,"r+")) == NULL){
-                printf("open rule.txt error!\n");
+            if((fp1 = fopen(file_rule,"r")) == NULL){
+                printf("open \"%s\" error!\n",file_rule);
                 return;
             }
 
@@ -516,15 +599,6 @@ void on_del_clicked(GtkWidget *widget, gpointer window)
                 fprintf(fp0, "%s", buf);
             }
             fclose(fp1);
-            /*
-            printf("\n【kernel_data】\n");
-            fseek(fp0, 0, SEEK_SET);
-            for(i = 0; i <= num; i++){
-                fgets(buf, 80, fp0);
-                printf("<row %d>: %s", i+1, buf);
-            }
-            printf("\n\n");
-            */
             fclose(fp0);
         }
         gtk_widget_destroy(dialog1);
@@ -552,7 +626,7 @@ void on_ok_clicked(GtkButton *button, gpointer data)
     int num, i;
     gchar *text;
 
-    if((fp1 = fopen(file_rule,"r+")) == NULL){
+    if((fp1 = fopen(file_rule,"r")) == NULL){
         printf("open \"%s\" error!\n",file_rule);
        return;
     }
@@ -734,13 +808,13 @@ void on_ok_clicked(GtkButton *button, gpointer data)
     gtk_clist_append(GTK_CLIST(clist), new_row);
     fclose(fp1);
 
-    if((fp0 = fopen(file_dev,"a+")) == NULL)
+    if((fp0 = fopen(file_dev,"w+")) == NULL)
     {
-       printf("open memdev error!\n");
+       printf("open \"%s\" error!\n", file_dev);
        return;
     }
-    if((fp1 = fopen(file_rule,"r+")) == NULL){
-        printf("open rule.txt error!\n");
+    if((fp1 = fopen(file_rule,"r")) == NULL){
+        printf("open \"%s\" error!\n", file_rule);
         return;
     }
 
@@ -754,15 +828,6 @@ void on_ok_clicked(GtkButton *button, gpointer data)
         fprintf(fp0, "%s", buf);
     }
     fclose(fp1);
-    /*
-    printf("\n【kernel_data】\n");
-    fseek(fp0, 0, SEEK_SET);
-    for(i = 0; i <= num; i++){
-        fgets(buf, 80, fp0);
-        printf("<row %d>: %s", i+1, buf);
-    }
-    printf("\n\n");
-    */
     fclose(fp0);
     gtk_widget_destroy(add_win);
 }

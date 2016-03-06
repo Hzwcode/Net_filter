@@ -1,7 +1,6 @@
 #ifndef __NETFILTER__
 #define __NETFILTER__
 
-
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -57,11 +56,11 @@ typedef struct rule{
           uint8_t mask;         //掩码
      }saddr, daddr;             //源IP地址，目的IP地址
 	uint16_t sport, dport;     //源端口，目的端口
-	__u8 protocol;             //协议类型                      
+	__u8 protocol;             //协议类型                  
      struct rule_time tm;       //时间段
 	Bool action;               //动作
 
-     struct list_head list;     //双项链表
+     struct list_head list;     //双向链表
 }RULE;
 
 unsigned int hook_pre_routing(unsigned int hooknum,

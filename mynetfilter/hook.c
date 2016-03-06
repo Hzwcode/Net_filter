@@ -11,7 +11,10 @@ MODULE_LICENSE("GPL");
 
 extern struct rule rule_pre_routing;
 extern struct rule rule_local_out;
-//extern struct mem_dev *mem_devp;
+extern struct mem_dev *mem_log;
+extern int log_len;
+
+int n_match = 0;
 
 __u8 GetProtocol(struct sk_buff *skb){
 	struct sk_buff *sk;
@@ -110,7 +113,6 @@ Bool CompareTime(struct rule_time rule_tm, struct rtc_time tm){
 }
 /*
 Bool filter_pre_routing(struct sk_buff *skb){
-	//struct sk_buff *sk; 
 	struct rule *ptr;
 	uint32_t s_addr, d_addr;
 	__u8 protocol;
@@ -125,7 +127,6 @@ Bool filter_pre_routing(struct sk_buff *skb){
 	if(!skb) 
 		return false;
 	
-	//sk = skb_copy(skb,1);
 	protocol = GetProtocol(skb);
 	s_addr = GetAddr(skb, SRC);
 	d_addr = GetAddr(skb, DEST);
@@ -192,8 +193,8 @@ Bool filter_pre_routing(struct sk_buff *skb){
 	return flag;
 }
 */
+
 Bool filter_local_out(struct sk_buff *skb){
-	//struct sk_buff *sk; 
 	struct rule *ptr;
 	uint32_t s_addr, d_addr;
 	__u8 protocol;
@@ -204,23 +205,23 @@ Bool filter_local_out(struct sk_buff *skb){
 	Bool match = false;
 	Bool flag = false;
 	int n = 0;
+	int ret;
 
 	if(!skb) 
 		return false;
 	
-	//sk = skb_copy(skb,1);
 	protocol = GetProtocol(skb);
 	s_addr = GetAddr(skb, SRC);
 	d_addr = GetAddr(skb, DEST);
 	s_port = GetPort(skb, SRC);
 	d_port = GetPort(skb, DEST);
 	
-	do_gettimeofday(&timeval);
-	local_time = (u32)(timeval.tv_sec + (8 * 60 * 60));
-	rtc_time_to_tm(local_time, &tm);
-
 	list_for_each_entry(ptr, &rule_local_out.list, list){
 		n++;
+		do_gettimeofday(&timeval);
+		local_time = (u32)(timeval.tv_sec + (8 * 60 * 60));
+		rtc_time_to_tm(local_time, &tm);
+
 		match = ptr->action ? 0 : 1;
 		if(!match){
 			//printk("action false, default accept.\n");
@@ -258,17 +259,40 @@ Bool filter_local_out(struct sk_buff *skb){
 		}
 		if(match){
 			flag = true;
-			printk("Local_out: send a packet to %pI4 and drop!\n", &d_addr);
-			printk("match the regulation %d success!\n", n);
+			++n_match;
+			if(mem_log->size - log_len > 120){
+				ret = sprintf(mem_log->data + log_len, 
+				    "time@[%04d-%02d-%02d %02d:%02d:%02d] %hhu.%hhu.%hhu.%hhu/%u:%u to %hhu.%hhu.%hhu.%hhu/%u:%u, protocol: %u, ltime: %02d:%02d:%02d, rtime: %02d:%02d:%02d, action: %s\n", 
+					tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, 
+					((unsigned char *)&ptr->saddr.addr)[0], 
+					((unsigned char *)&ptr->saddr.addr)[1], 
+					((unsigned char *)&ptr->saddr.addr)[2], 
+					((unsigned char *)&ptr->saddr.addr)[3], 
+					ptr->saddr.mask, ptr->sport, 
+					((unsigned char *)&ptr->daddr.addr)[0], 
+					((unsigned char *)&ptr->daddr.addr)[1], 
+					((unsigned char *)&ptr->daddr.addr)[2], 
+					((unsigned char *)&ptr->daddr.addr)[3], 
+					ptr->daddr.mask, ptr->dport, 
+					ptr->protocol, 
+					ptr->tm.ltime.tm_hour, ptr->tm.ltime.tm_min, ptr->tm.ltime.tm_sec, 
+					ptr->tm.rtime.tm_hour, ptr->tm.rtime.tm_min, ptr->tm.rtime.tm_sec, 
+					ptr->action ? "Permit" : "Reject");
+				log_len += ret;
+			} 
+			else{
+				printk("Log buffer full!\n");
+			}
+
 			printk("-----------------------------\n");
-			printk("[Drop a packet]\n");
+			printk("<time %d> Local_out: send a packet to %pI4 and drop!\n", n_match, &d_addr);
+			printk("match the regulation %d success!\n", n);
 			printk(" saddr:      %pI4\n", &s_addr);
 			printk(" sport:      %u\n\n", s_port);
 			printk(" daddr:      %pI4\n", &d_addr);
 			printk(" dport:      %u\n\n", d_port);
 			printk(" protocol:   %hhu\n", protocol);
 			printk("-----------------------------\n");
-
 			break;
 		}
 	}
@@ -309,8 +333,10 @@ unsigned int hook_local_in(unsigned int hooknum,
 			const struct net_device *out,
 			int (*okfn)(struct sk_buff *))
 {
-	
-	printk("hook_local_in\n");
+	//printk("hook_local_in\n");
+	if(filter_local_in(skb) == true) {
+		return NF_DROP;
+	}
 	return NF_ACCEPT;
 }
 

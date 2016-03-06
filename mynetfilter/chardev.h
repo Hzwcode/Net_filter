@@ -13,16 +13,17 @@
 
 #include "netfilter.h"
 
-#define MEMDEV_SIZE 4096
+#define MEMDEV_SIZE (4 * 1024)       //4K
 #define MEMDEV_NR_DEVS 1
+#define LOG_SIZE (4 * 1024 * 1024)   //4M
 
 struct mem_dev{
 	char *data;         //分配到内存的起始地址
 	unsigned long size; //内存的大小
 };
 
-unsigned int inet2addr(char *str);
-char* addr2inet(unsigned addr);
+//unsigned int inet2addr(char *str);
+//char* addr2inet(unsigned addr);
 void PrintRule(void);
 //struct rule* str2rule(const char *buf);
 int my_open(struct inode *inode, struct file *file);

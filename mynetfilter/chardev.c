@@ -7,6 +7,10 @@ unsigned int minor = 0;
 dev_t dev_id;
 struct cdev my_cdev;
 struct mem_dev *mem_devp;  //设备结构体指针
+struct mem_dev *mem_log;   //记录日志
+int log_len = 0;
+struct device *device;
+struct class *cls;
 int mutex = 1;
 int counter = 0;
 
@@ -49,7 +53,7 @@ void PrintRule(void){
 	printk("-----------------------------\n");
     printk("          rule_list:         \n");
     printk("-----------------------------\n");
-	list_for_each_entry(tmp, &rule_pre_routing.list, list){
+	list_for_each_entry(tmp, &rule_local_out.list, list){
         printk(" saddr:      %pI4 / %u\n", &tmp->saddr.addr, tmp->saddr.mask);
         printk(" sport:      %u\n\n", tmp->sport);
         printk(" daddr:      %pI4 / %u\n", &tmp->daddr.addr, tmp->daddr.mask);
@@ -146,21 +150,22 @@ int my_release(struct inode *inode, struct file *file){
 ssize_t my_read(struct file *file, char __user *buf, size_t size, loff_t *ppos){
 	unsigned int p = *ppos;    //p位当前读写位置
 	unsigned int count = size;  //一次读取的大小
-	
-	struct mem_dev *dev = file->private_data;  //获得设备结构体指针
 
 	//判断读位置是否有效
-  	if(p >= MEMDEV_SIZE)  //是否超出读取范围
-    	return 0;
-  	if(count > MEMDEV_SIZE - p)
-   	    count = MEMDEV_SIZE - p;  //count大于读取的范围，则缩小读取范围
+  	if(p >= LOG_SIZE)  //是否超出读取范围
+  	{
+  		printk("Reading point reaches the end\n");
+  		return 0;
+  	}
+  	if(count > LOG_SIZE - p)
+   	    count = LOG_SIZE - p;  //count大于读取的范围，则缩小读取范围
    	//读取数据到用户空间
-	if(copy_to_user((void *)buf, dev->data + p, count) != 0){
+	if(copy_to_user((void *)buf, mem_log->data + p, count) != 0){
 		printk("Failed to copy_to_user\n");
 		return -EFAULT;
 	}
 	*ppos += count;
-	printk("dev_rule_read: success\n");
+	printk("log_read: success\n");
 	printk("read %d byte(s) from %d\n", count, p);
 	printk("<kernel>read content is\n[%s]\n", buf);
 	return count;
@@ -182,7 +187,7 @@ ssize_t my_write(struct file *file, const char __user *buf, size_t size, loff_t 
 		count = MEMDEV_SIZE - p;
 
 	//从用户空间写入数据
-	if(copy_from_user(dev->data + p, (void *)buf, count)){
+	if(copy_from_user(dev->data + p, (void *)buf, count) != 0){
 		printk("Failed to copy_from_user\n");
 		return -EFAULT;
 	}
@@ -314,6 +319,14 @@ int dev_init(void){
 	printk("successfully register an dev_id %x!\n", dev_id);
 	printk("major[%d] minor[%d]\n", major, minor);
 
+	cls = class_create(THIS_MODULE, "memdev");
+	if(IS_ERR(cls)){
+		ret = PTR_ERR(cls);
+		printk("Failed to class_create\n");
+		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
+		return ret;
+	}
+
 	//2.注册设备
 	//初始化cdev结构
 	cdev_init(&my_cdev, &rule_fops);
@@ -323,32 +336,59 @@ int dev_init(void){
 	ret = cdev_add(&my_cdev, dev_id, MEMDEV_NR_DEVS);
 	if(ret < 0){
 		printk("cdev_add error!\n");
+		class_destroy(cls);
 		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
 		//return -ENODEV;
 		return ret;
 	}
 	printk("hello kernel, cdev_add success!\n");
 
+	device = device_create(cls, NULL, dev_id, NULL, "memdev");
+	if(IS_ERR(device)){
+		ret = PTR_ERR(device);
+		printk("Failed to device_create\n");
+		cdev_del(&my_cdev);
+		class_destroy(cls);
+		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
+		return ret;
+	}
+
 	/* 为设备描述结构分配内存*/
-  	mem_devp = kzalloc(MEMDEV_NR_DEVS * sizeof(struct mem_dev), GFP_KERNEL);//kmalloc函数返回的是虚拟地址(线性地址).
+  	mem_devp = (struct mem_dev *)kzalloc(MEMDEV_NR_DEVS * sizeof(struct mem_dev), GFP_KERNEL);
 	if(!mem_devp){  //申请失败
 		printk("mem_dev kmalloc error!\n");
+		cdev_del(&my_cdev);
+		class_destroy(cls);
 		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
 		return -ENOMEM;
 	}
 	//memset(mem_devp, 0, sizeof(struct mem_dev));  //新申请的内存做初始化工作
-
 	/*为设备分配内存*/
   	for(i = 0; i < MEMDEV_NR_DEVS; i++) {
         mem_devp[i].size = MEMDEV_SIZE;
-        mem_devp[i].data = kzalloc(MEMDEV_SIZE, GFP_KERNEL);//分配内存给两个设备
+        mem_devp[i].data = (char *)kzalloc(MEMDEV_SIZE * sizeof(char), GFP_KERNEL);
         //memset(mem_devp[i].data, 0, MEMDEV_SIZE);//初始化新分配到的内存
   	}
+
+  	mem_log = (struct mem_dev *)kzalloc(1 * sizeof(struct mem_dev), GFP_KERNEL);
+  	if(!mem_log){
+  		printk("log memory kmalloc error!\n");
+  		cdev_del(&my_cdev);
+		class_destroy(cls);
+		unregister_chrdev_region(dev_id, MEMDEV_NR_DEVS);
+		return -ENOMEM;
+  	}
+
+  	mem_log->size = LOG_SIZE;
+  	mem_log->data = (char *)kzalloc(LOG_SIZE * sizeof(char), GFP_KERNEL);
+
 	return 0;
 }
 
 void dev_exit(void){
 	int i;
+	device_destroy(cls, dev_id);
+	class_destroy(cls);
 	//从内核中删除cdev
 	cdev_del(&my_cdev);
 	//注销设备号
@@ -357,5 +397,7 @@ void dev_exit(void){
     	kfree(mem_devp[i].data);
   	}
   	kfree(mem_devp);
+  	kfree(mem_log->data);
+  	kfree(mem_log);
 	printk("good bye kernel, dev exit ...\n");
 }
