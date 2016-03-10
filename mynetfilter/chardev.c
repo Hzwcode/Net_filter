@@ -165,9 +165,9 @@ ssize_t my_read(struct file *file, char __user *buf, size_t size, loff_t *ppos){
 		return -EFAULT;
 	}
 	*ppos += count;
-	printk("log_read: success\n");
-	printk("read %d byte(s) from %d\n", count, p);
-	printk("<kernel>read content is\n[%s]\n", buf);
+	//printk("log_read: success\n");
+	//printk("read %d byte(s) from %d\n", count, p);
+	//printk("<kernel>read content is\n[%s]\n", buf);
 	return count;
 }
 

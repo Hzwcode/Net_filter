@@ -222,11 +222,7 @@ Bool filter_local_out(struct sk_buff *skb){
 		local_time = (u32)(timeval.tv_sec + (8 * 60 * 60));
 		rtc_time_to_tm(local_time, &tm);
 
-		match = ptr->action ? 0 : 1;
-		if(!match){
-			//printk("action false, default accept.\n");
-			continue;
-		}
+		match = false;
 		match = (ANY_TIME(ptr->tm) || CompareTime(ptr->tm, tm));
 		if(!match){
 			//printk("time false, does not match.\n");
@@ -257,6 +253,8 @@ Bool filter_local_out(struct sk_buff *skb){
 			//printk("dest_port false, does not match.\n");
 			continue;
 		}
+		match = ptr->action ? 0 : 1;
+		
 		if(match){
 			flag = true;
 			++n_match;
@@ -293,6 +291,10 @@ Bool filter_local_out(struct sk_buff *skb){
 			printk(" dport:      %u\n\n", d_port);
 			printk(" protocol:   %hhu\n", protocol);
 			printk("-----------------------------\n");
+			break;
+		}
+		else{
+			flag = false;
 			break;
 		}
 	}

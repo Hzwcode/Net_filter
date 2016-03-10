@@ -792,12 +792,12 @@ void on_ok_clicked(GtkButton *button, gpointer data)
     text = gtk_combo_box_get_active_text(GTK_COMBO_BOX(combo3));
     strcpy(action, text);
     free(text);
-
+    
     if(action == NULL)
         strcpy(string[6], "Reject");
     else
         strcpy(string[6], action);
-
+    
     if(strcmp(action, "Reject") == 0)
         fprintf(fp1, "%s", "0");
     else
